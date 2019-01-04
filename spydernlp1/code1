@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Dec 28 11:22:59 2018
+
+@author: piyush
+"""
+
+import re
+import pandas as pd
+
+
+#Read the CSV input file
+messages = pd.read_csv('/home/piyush/projects/nlp1/smsspamcollection/SMSSpamCollection', sep ='\t', \
+                        names=['labels', 'message'])
+
+#convert categorical target variable to numeric
+labels  = {'ham':0, 'spam':1}  
+
+messages['labels'] = [labels[item] for item in messages['labels']]
+
+# test data pre-processing
+import string
+from nltk.tokenize import RegexpTokenizer
+from nltk.corpus import stopwords
+
+
+# Removing all, keeping only alphanumeric and string of length >= 2
+
+token1 = RegexpTokenizer(r'[a-zA-Z]+' r'\w{1,}') 
+def text_process(mess):
+    # Remove punc
+    # Remove stop words
+    
+    nopunc = re.sub(",", '', ''.join(mess))
+    nopunc = [char for char in nopunc.split() if char.lower() not in stopwords.words('english')]
+    nopunc = [char for char in nopunc if char not in string.punctuation] 
+    return ' '.join(token1.tokenize(' '.join(nopunc)))
+
+
+
+messages['message'] = messages['message'].apply(text_process)
+
+from sklearn.feature_extraction.text import CountVectorizer , TfidfTransformer
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.naive_bayes import MultinomialNB
+
+
+vectorizer = CountVectorizer()
+tfidf = TfidfTransformer()
+nbmodel = MultinomialNB()
+
+# define param field for the pipeline
+nb_params = {'vect__ngram_range':[(1,1),(1,2)], 'classify__alpha':[0.01,0.1,1,10,100]}
+
+# define pipeline for the model
+nb_pipeline = Pipeline([('vect', vectorizer), ('tf', tfidf),('classify', nbmodel)])
+
+from sklearn.metrics import make_scorer, recall_score, accuracy_score, precision_score
+#from sklearn.metrics import classification_report, roc_curve, precision_recall_curve, auc, confusion_matrix
+
+# define model validation crireria, we will use recall score to rank the model performance
+scorers = {
+    'precision_score': make_scorer(precision_score),
+    'recall_score': make_scorer(recall_score),
+    'accuracy_score': make_scorer(accuracy_score)
+}
+
+import warnings
+warnings.filterwarnings('ignore')
+
+#instanciate grid search cv with fold of 5 
+grid = GridSearchCV(nb_pipeline, nb_params, cv=5, scoring=scorers, return_train_score=False, \
+                    refit='recall_score')
+
+grid.fit(messages['message'], messages['labels'])
+
+# print best parameter for the model
+print('best param is: ', grid.best_params_)
